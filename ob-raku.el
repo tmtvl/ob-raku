@@ -5,8 +5,9 @@
 ;; Author: Tim Van den Langenbergh <tmt_vdl@gmx.com>
 ;; Keywords: literate programming, reproducible research
 ;; Homepage: https://github.com/tmtvl/ob-raku
-;; Version: 0.03
-;; News: 0.03 --- Removed the double execution, simplified the formatting of the Raku output, fixed hline support.
+;; Version: 0.04
+;; News: 0.04 --- Added square brackets to list splitting, so as to split embedded arrays as well as lists.
+;;       0.03 --- Removed the double execution, simplified the formatting of the Raku output, fixed hline support.
 ;;       0.02 --- Added support for tables, removed unneeded require statements, error when trying to use a session.
 ;;       0.01 --- Initial release. Accept inputs, support for output and value results.
 
@@ -118,14 +119,15 @@ Use the PROCESSED-PARAMS if defined."
   "If RESULTS look like a table, then convert them into an elisp table.
 Otherwise return RESULTS as a string."
   (cond
-   ((string-prefix-p "$[" results)
+   ((or (string-prefix-p "$[" results)
+	(string-prefix-p "$(" results))
     (org-babel-raku-sanitize-table
      (mapcar
       (lambda (pairstring)
 	(split-string pairstring ", " t))
       (split-string
        (substring results 2 -2)
-       "[()]"
+       "[][()]"
        t))))
    ((string-prefix-p "{" results)
     (org-babel-raku-sanitize-table
