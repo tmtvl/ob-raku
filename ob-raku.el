@@ -5,8 +5,9 @@
 ;; Author: Tim Van den Langenbergh <tmt_vdl@gmx.com>
 ;; Keywords: literate programming, reproducible research
 ;; Homepage: https://github.com/tmtvl/ob-raku
-;; Version: 0.04
-;; News: 0.04 --- Added square brackets to list splitting, so as to split embedded arrays as well as lists.
+;; Version: 0.05
+;; News: 0.05 --- Added initial support for parentheses and commas in strings in lists without breaking the lists on return.
+;;       0.04 --- Added square brackets to list splitting, so as to split embedded arrays as well as lists.
 ;;       0.03 --- Removed the double execution, simplified the formatting of the Raku output, fixed hline support.
 ;;       0.02 --- Added support for tables, removed unneeded require statements, error when trying to use a session.
 ;;       0.01 --- Initial release. Accept inputs, support for output and value results.
@@ -105,6 +106,51 @@ Use the PROCESSED-PARAMS if defined."
 	"\"HLINE\""
       (format "%S" var))))
 
+(defun org-babel-raku-escape-nested-list-delimiters (list)
+  "Escapes any commas or parentheses found in strings contained in the given LIST."
+  (let ((in-string nil))
+    (mapconcat
+	   (lambda (string)
+	     (cond
+	      ((string= string "\"")
+	       (setq in-string (not in-string))
+	       string)
+	      ((and
+		in-string
+		(or
+		 (string= string "(")
+		 (string= string ")")
+		 (string= string "[")
+		 (string= string "]")
+		 (string= string ",")))
+	       (concat "\\" string))
+	      (t string)))
+	   (split-string list "" t)
+	   "")))
+
+(defun org-babel-raku-unescape-parens-and-commas (string)
+  "Unescapes parentheses and commas in STRING."
+  ;;(replace-regexp-in-string "\\\\\([][(),]\)" "\1" string) ;; This doesn't work.
+  (let ((index (string-match "\\\\[][(),]" string)))
+    (if index
+	(concat
+	 (substring string 0 index)
+	 (org-babel-raku-unescape-parens-and-commas
+	  (substring string (+ index 1))))
+      string)))
+
+(defun org-babel-raku-split-list (list)
+  "Split LIST on a comma or parentheses, ignoring those in a string."
+  (mapcar
+   (lambda (pairstring)
+     (mapcar
+      (lambda (string)
+	(org-babel-raku-unescape-parens-and-commas string))
+      (split-string pairstring "[^\\], " t)))
+   (split-string (org-babel-raku-escape-nested-list-delimiters (substring list 2 -2))
+		 "[^\\][][()]"
+		 t)))
+
 (defun org-babel-raku-sanitize-table (table)
   "Recursively sanitize the values in the given TABLE."
   (if (listp table)
@@ -122,13 +168,7 @@ Otherwise return RESULTS as a string."
    ((or (string-prefix-p "$[" results)
 	(string-prefix-p "$(" results))
     (org-babel-raku-sanitize-table
-     (mapcar
-      (lambda (pairstring)
-	(split-string pairstring ", " t))
-      (split-string
-       (substring results 2 -2)
-       "[][()]"
-       t))))
+     (org-babel-raku-split-list results)))
    ((string-prefix-p "{" results)
     (org-babel-raku-sanitize-table
      (mapcar

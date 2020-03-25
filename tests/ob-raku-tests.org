@@ -25,6 +25,11 @@ say 7;
    #+BEGIN_SRC raku
 my @a = (("Name", "Age", "Weight"), "HLINE", ("Fido", 4, 6));
    #+END_SRC
+   
+   #+NAME: list-breaking-string-test
+   #+BEGIN_SRC raku
+my @a = ("This, is(", ",)a, test")
+   #+END_SRC
 
 ** Raku source block returning a hash
 
