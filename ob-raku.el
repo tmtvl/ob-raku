@@ -5,12 +5,8 @@
 ;; Author: Tim Van den Langenbergh <tmt_vdl@gmx.com>
 ;; Keywords: literate programming, reproducible research
 ;; Homepage: https://github.com/tmtvl/ob-raku
-;; Version: 0.05
-;; News: 0.05 --- Added initial support for parentheses and commas in strings in lists without breaking the lists on return.
-;;       0.04 --- Added square brackets to list splitting, so as to split embedded arrays as well as lists.
-;;       0.03 --- Removed the double execution, simplified the formatting of the Raku output, fixed hline support.
-;;       0.02 --- Added support for tables, removed unneeded require statements, error when trying to use a session.
-;;       0.01 --- Initial release. Accept inputs, support for output and value results.
+;; Version: 0.6
+;; Package-Requires: ((emacs "26.1") raku-mode)
 
 ;;; License:
 
@@ -25,9 +21,21 @@
 ;; GNU General Public License for more details.
 ;;
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs; see the file COPYING.  If not, write to the
-;; Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
-;; Boston, MA 02110-1301, USA.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; News: 0.6  --- Replaced needless string splitting with proper regexes.
+;;                 Also switched string parsing to character parsing where
+;;                 applicable.
+;;        0.05 --- Added initial support for parentheses and commas in strings
+;;                 in lists without breaking the lists on return.
+;;        0.04 --- Added square brackets to list splitting, so as to split
+;;                 embedded arrays as well as lists.
+;;        0.03 --- Removed the double execution, simplified the formatting of
+;;                 the Raku output, fixed hline support.
+;;        0.02 --- Added support for tables, removed unneeded require
+;;                 statements, error when trying to use a session.
+;;        0.01 --- Initial release. Accept inputs, support for output and value
+;;                 results.
 
 ;;; Commentary:
 
@@ -107,37 +115,25 @@ Use the PROCESSED-PARAMS if defined."
       (format "%S" var))))
 
 (defun org-babel-raku-escape-nested-list-delimiters (list)
-  "Escapes any commas or parentheses found in strings contained in the given LIST."
+  "Escapes any commas or parentheses found in strings contained in the given \
+LIST."
   (let ((in-string nil))
-    (mapconcat
-	   (lambda (string)
-	     (cond
-	      ((string= string "\"")
+    (concat
+     (mapcan
+      (lambda (c)
+	(cond ((eq c ?\")
 	       (setq in-string (not in-string))
-	       string)
+	       (list c))
 	      ((and
 		in-string
-		(or
-		 (string= string "(")
-		 (string= string ")")
-		 (string= string "[")
-		 (string= string "]")
-		 (string= string ",")))
-	       (concat "\\" string))
-	      (t string)))
-	   (split-string list "" t)
-	   "")))
+		(member c (list ?\( ?\) ?\[ ?\] ?,)))
+	       (list ?\\ c))
+	      (t (list c))))
+      list))))
 
 (defun org-babel-raku-unescape-parens-and-commas (string)
   "Unescapes parentheses and commas in STRING."
-  ;;(replace-regexp-in-string "\\\\\([][(),]\)" "\1" string) ;; This doesn't work.
-  (let ((index (string-match "\\\\[][(),]" string)))
-    (if index
-	(concat
-	 (substring string 0 index)
-	 (org-babel-raku-unescape-parens-and-commas
-	  (substring string (+ index 1))))
-      string)))
+  (replace-regexp-in-string "\\\\\\([][(),]\\)" "\\1" string))
 
 (defun org-babel-raku-split-list (list)
   "Split LIST on a comma or parentheses, ignoring those in a string."
@@ -146,8 +142,12 @@ Use the PROCESSED-PARAMS if defined."
      (mapcar
       (lambda (string)
 	(org-babel-raku-unescape-parens-and-commas string))
-      (split-string pairstring "[^\\], " t)))
-   (split-string (org-babel-raku-escape-nested-list-delimiters (substring list 2 -2))
+      (split-string pairstring "[^\\]?, " t)))
+   (split-string (replace-regexp-in-string
+		  "\\([^\\]\\)\\([][(),]\\)"
+		  "\\1 \\2"
+		  (org-babel-raku-escape-nested-list-delimiters
+		   (substring list 2 -2)))
 		 "[^\\][][()]"
 		 t)))
 
@@ -155,8 +155,7 @@ Use the PROCESSED-PARAMS if defined."
   "Recursively sanitize the values in the given TABLE."
   (if (listp table)
       (let ((sanitized-table (mapcar 'org-babel-raku-sanitize-table table)))
-	(if (and (stringp (car sanitized-table))
-		 (string= (car sanitized-table) "HLINE"))
+	(if (equal (car sanitized-table) "HLINE")
 	    'hline
 	  sanitized-table))
     (org-babel-script-escape table)))
