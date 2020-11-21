@@ -5,7 +5,7 @@
 ;; Author: Tim Van den Langenbergh <tmt_vdl@gmx.com>
 ;; Keywords: literate programming, reproducible research
 ;; Homepage: https://github.com/tmtvl/ob-raku
-;; Version: 0.6
+;; Version: 0.7
 ;; Package-Requires: ((emacs "26.1") raku-mode)
 
 ;;; License:
@@ -23,7 +23,8 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
-;;; News: 0.6  --- Replaced needless string splitting with proper regexes.
+;;; News: 0.7  --- Fixed a bug with receiving nested lists from blocks.
+;;        0.6  --- Replaced needless string splitting with proper regexes.
 ;;                 Also switched string parsing to character parsing where
 ;;                 applicable.
 ;;        0.05 --- Added initial support for parentheses and commas in strings
@@ -117,18 +118,23 @@ Use the PROCESSED-PARAMS if defined."
 (defun org-babel-raku-escape-nested-list-delimiters (list)
   "Escapes any commas or parentheses found in strings contained in the given \
 LIST."
-  (let ((in-string nil))
+  (let ((in-string nil)
+	(last-char nil))
     (concat
      (mapcan
       (lambda (c)
-	(cond ((eq c ?\")
+	(cond ((and (eq c ?\")
+		    (not (eq last-char ?\\)))
 	       (setq in-string (not in-string))
+	       (setq last-char c)
 	       (list c))
 	      ((and
 		in-string
 		(member c (list ?\( ?\) ?\[ ?\] ?,)))
+	       (setq last-char c)
 	       (list ?\\ c))
-	      (t (list c))))
+	      (t (setq last-char c)
+		 (list c))))
       list))))
 
 (defun org-babel-raku-unescape-parens-and-commas (string)
@@ -142,14 +148,18 @@ LIST."
      (mapcar
       (lambda (string)
 	(org-babel-raku-unescape-parens-and-commas string))
-      (split-string pairstring "[^\\]?, " t)))
+      (split-string pairstring "[^\\], " t)))
    (split-string (replace-regexp-in-string
-		  "\\([^\\]\\)\\([][(),]\\)"
+		  "\\([^\\$]\\)\\([][(),]\\)"
 		  "\\1 \\2"
 		  (org-babel-raku-escape-nested-list-delimiters
-		   (substring list 2 -2)))
-		 "[^\\][][()]"
-		 t)))
+		   (concat
+		    " "
+		    (substring list 2 -2)
+		    " ")))
+		 "[^\\][][()]\\(,\\)?"
+		 t
+		 split-string-default-separators)))
 
 (defun org-babel-raku-sanitize-table (table)
   "Recursively sanitize the values in the given TABLE."
